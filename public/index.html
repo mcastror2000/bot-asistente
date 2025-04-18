@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bot Asistente</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    input, button {
+      font-size: 1rem;
+    }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 5px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    @media (max-width: 480px) {
+      body {
+        padding: 1rem 0.5rem;
+      }
+      input, button {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      button {
+        margin-bottom: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2>🤖 Bot Asistente Personal</h2>
+  <p>Escribe tu recordatorio:</p>
+
+  <input id="entrada" type="text" placeholder="Ej: Recuérdame regar las plantas mañana a las 8" style="width: 100%; padding: 10px;" />
+  <button id="btnEnviar">Enviar</button>
+  <button onclick="leerRecordatorios()">🔊 Leer recordatorios</button>
+
+  <h3>Respuesta del bot:</h3>
+  <div id="respuesta" style="white-space: pre-wrap; background: #f1f1f1; padding: 10px;"></div>
+
+  <h3>🗂️ Recordatorios guardados</h3>
+  <ul id="lista-recordatorios" style="padding-left: 0; list-style: none;"></ul>
+
+  <script>
+    async function enviar() {
+      const mensaje = document.getElementById("entrada").value;
+      const respuestaDiv = document.getElementById("respuesta");
+      respuestaDiv.textContent = "Procesando...";
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mensaje })
+        });
+
+        const data = await res.json();
+        if (data.respuesta) {
+          respuestaDiv.textContent = data.respuesta;
+          await cargarRecordatorios();
+        } else {
+          respuestaDiv.textContent = "No se recibió respuesta del bot.";
+        }
+      } catch (err) {
+        respuestaDiv.textContent = "Ocurrió un error: " + err.message;
+      }
+
+      document.getElementById("entrada").value = "";
+      document.getElementById("entrada").focus();
+    }
+
+    async function cargarRecordatorios() {
+      const lista = document.getElementById("lista-recordatorios");
+      lista.innerHTML = "⏳ Cargando...";
+
+      try {
+        const res = await fetch("/api/recordatorios");
+        const data = await res.json();
+
+        if (res.ok && data.recordatorios.length > 0) {
+          lista.innerHTML = "";
+          data.recordatorios.forEach(rec => {
+            const li = document.createElement("li");
+            li.style.marginBottom = "10px";
+            li.style.padding = "10px";
+            li.style.border = "1px solid #ddd";
+            li.style.borderRadius = "5px";
+            li.style.backgroundColor = rec.estado === "hecho" ? "#d4edda" : "#fff";
+
+            const texto = document.createElement("div");
+            texto.textContent = rec.texto;
+            texto.style.fontWeight = "bold";
+
+            const fecha = document.createElement("div");
+            fecha.style.fontSize = "0.9em";
+            fecha.style.color = "#555";
+            fecha.textContent = rec.fecha ? `📅 ${new Date(rec.fecha).toLocaleString()}` : "📅 Fecha no disponible";
+
+            const estado = document.createElement("div");
+            estado.textContent = rec.estado === "hecho" ? "✔️ Hecho" : "🕓 Pendiente";
+
+            const btns = document.createElement("div");
+            btns.style.marginTop = "8px";
+
+            if (rec.estado !== "hecho") {
+              const btnHecho = document.createElement("button");
+              btnHecho.textContent = "✔️ Marcar como hecho";
+              btnHecho.onclick = async () => {
+                await fetch(`/api/recordatorios/${rec.id}/hecho`, { method: "PUT" });
+                await cargarRecordatorios();
+              };
+              btns.appendChild(btnHecho);
+            }
+
+            const btnEliminar = document.createElement("button");
+            btnEliminar.textContent = "🗑️ Eliminar";
+            btnEliminar.style.marginLeft = "10px";
+            btnEliminar.onclick = async () => {
+              await fetch(`/api/recordatorios/${rec.id}`, { method: "DELETE" });
+              await cargarRecordatorios();
+            };
+            btns.appendChild(btnEliminar);
+
+            li.appendChild(texto);
+            li.appendChild(fecha);
+            li.appendChild(estado);
+            li.appendChild(btns);
+            lista.appendChild(li);
+          });
+        } else {
+          lista.innerHTML = "<li>No hay recordatorios guardados.</li>";
+        }
+      } catch (err) {
+        lista.innerHTML = `<li>❌ Error al cargar recordatorios: ${err.message}</li>`;
+      }
+    }
+
+    function leerRecordatorios() {
+      const items = document.querySelectorAll("#lista-recordatorios li");
+      if (items.length === 0) {
+        hablar("No tienes recordatorios guardados.");
+        return;
+      }
+      let texto = "Estos son tus recordatorios: ";
+      items.forEach((item, i) => {
+        texto += `Recordatorio ${i + 1}. ` + item.querySelector("div").textContent + ". ";
+      });
+      hablar(texto);
+    }
+
+    function hablar(texto) {
+      const mensaje = new SpeechSynthesisUtterance(texto);
+      mensaje.lang = "es-ES";
+      mensaje.rate = 0.95;
+      mensaje.pitch = 1.0;
+      window.speechSynthesis.speak(mensaje);
+    }
+
+    document.getElementById("btnEnviar").addEventListener("click", enviar);
+    cargarRecordatorios();
+  </script>
+</body>
+</html>
